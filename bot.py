@@ -13,7 +13,6 @@ intents.message_content = True
 
 bot = discord.Client(intents=intents)
 
-# Fichier de stockage des messages
 MESSAGE_FILE = "message_count.json"
 
 # Fonction pour obtenir le mois en toutes lettres (ex: "Janvier")
