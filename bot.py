@@ -74,6 +74,8 @@ async def on_message(message: discord.Message):
             "!top: Affiche le top 5 des membres les plus actifs\n"
             "!reset: Réinitialise les statistiques\n"
             "!clear10: Supprime les 10 derniers messages"
+            "!clear: Supprime tous les messages du salon\n"
+
         )
 
     if message.content == "!nb_messages" or message.content == "!nb_messages":
