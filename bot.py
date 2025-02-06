@@ -65,10 +65,21 @@ async def on_message(message: discord.Message):
     # Récupérer le nombre de messages envoyés par l'utilisateur
     message_count = data["users"][user_id]
 
+    # Traiter les commandes
+
+    if message.content == "!help":
+        await message.channel.send(
+            "Voici la liste des commandes disponibles:\n"
+            "!nb_messages: Affiche le nombre de messages envoyés ce mois-ci\n"
+            "!top: Affiche le top 5 des membres les plus actifs\n"
+            "!reset: Réinitialise les statistiques\n"
+            "!clear10: Supprime les 10 derniers messages"
+        )
+
     if message.content == "!nb_messages" or message.content == "!nb_messages":
         await message.channel.send(f"{message.author.mention}, tu as envoyé {message_count} message(s) au mois de {month_name} !")
 
-    if message.content == "!top":
+    if message.content == "!top" or datetime.now().day == 1:
         top_users = sorted(data["users"].items(), key=lambda x: x[1], reverse=True)
         top_message = "\n".join([f"{index + 1}. <@{user_id}>: {message_count} messages" for index, (user_id, message_count) in enumerate(top_users[:5])])
         await message.channel.send(f"Voici le top 5 des membres les plus actifs au mois de {month_name}:\n{top_message}")
@@ -81,5 +92,35 @@ async def on_message(message: discord.Message):
     if message.content == "!clear10" and message.author.guild_permissions.administrator:
         await message.channel.purge(limit=10)
         await message.channel.send("Le chat a été nettoyé des 10 dernier messages !")
+
+
+@bot.event
+async def on_member_join(member):
+    await member.send(f"Bonjour {member.mention}, bienvenue sur le serveur !")
+    await member.send(f"Utilisez la commande !help pour voir la liste des commandes disponibles.")
+
+@bot.event
+async def on_member_remove(member):
+    await member.send(f"Au revoir {member.mention}, à bientôt !")
+
+@bot.event
+async def on_message_delete(message):
+    if message.author.bot:
+        return  # Ignore les messages des bots
+    
+    log_channel_id = int(os.getenv("DELETE_LOG_CHANNEL_ID"))
+    log_channel = bot.get_channel(log_channel_id)
+
+    if log_channel:
+        embed = discord.Embed(
+            title="Message supprimé",
+            description=f"**Auteur:** {message.author.mention}\n**Salon:** {message.channel.mention}\n**Message:** {message.content}",
+            color=discord.Color.red(),
+            timestamp=datetime.utcnow()
+        )
+        await log_channel.send(embed=embed)
+    else:
+        print("Le channel de logs de suppression n'a pas été trouvé.")
+
 
 bot.run(os.getenv("DISCORD_ENV"))
