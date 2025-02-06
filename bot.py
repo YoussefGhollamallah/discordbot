@@ -93,6 +93,12 @@ async def on_message(message: discord.Message):
         await message.channel.purge(limit=10)
         await message.channel.send("Le chat a été nettoyé des 10 dernier messages !")
 
+    if message.content == "!clear" and message.author.guild_permissions.administrator:
+        await message.channel.purge(limit=100)
+        await message.channel.send("Le chat a été nettoyé !")
+    
+    if message.content.lower() == "bonjour" or message.content.lower() == "salut" or message.content.lower() == "hello" or message.content.lower() == "hi":
+        await message.channel.send(f"Salut {message.author.mention} !")
 
 @bot.event
 async def on_member_join(member):
@@ -121,6 +127,7 @@ async def on_message_delete(message):
         await log_channel.send(embed=embed)
     else:
         print("Le channel de logs de suppression n'a pas été trouvé.")
+
 
 
 bot.run(os.getenv("DISCORD_ENV"))
