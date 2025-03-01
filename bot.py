@@ -49,21 +49,27 @@ async def on_message(message: discord.Message):
 
     # Charger les données du fichier
     data = load_message_data()
-    guild_id = str(message.guild.id)  # Stocker en tant que string
+    guild_id = str(message.guild.id)
     current_month = datetime.now().month
     month_name = get_month_name(current_month)
+    previous_month = get_month_name(current_month - 1 if current_month > 1 else 12)
 
-    # Initialiser la structure pour le serveur si elle n'existe pas
+    # Initialiser la structure du serveur si elle n'existe pas
     if guild_id not in data["guilds"]:
-        data["guilds"][guild_id] = {"users": {}, "month": current_month}
+        data["guilds"][guild_id] = {"users": {}, "month": current_month, "history": {}}
 
-    # Vérifier si on doit réinitialiser le compteur pour ce serveur
+    # Vérifier si le mois a changé et sauvegarder l'ancien score
     if data["guilds"][guild_id]["month"] != current_month:
-        data["guilds"][guild_id] = {"users": {}, "month": current_month}
+        # Sauvegarder les scores du mois précédent dans "history"
+        data["guilds"][guild_id]["history"][previous_month] = data["guilds"][guild_id]["users"]
+
+        # Réinitialiser les données pour le nouveau mois
+        data["guilds"][guild_id]["users"] = {}
+        data["guilds"][guild_id]["month"] = current_month
 
     # Mettre à jour le nombre de messages de l'utilisateur
     user_id = str(message.author.id)
-    if message.content not in ["!nb_messages", "!top", "!reset", "!help"] and not message.author.id == 310788228368039937:
+    if message.content not in ["!nb_messages", "!top", "!reset", "!help", "!historique"] and not message.author.id == 310788228368039937:
         data["guilds"][guild_id]["users"][user_id] = data["guilds"][guild_id]["users"].get(user_id, 0) + 1
 
     # Sauvegarder les données
@@ -78,6 +84,7 @@ async def on_message(message: discord.Message):
             "Voici la liste des commandes disponibles :\n"
             "!nb_messages : Affiche ton nombre de messages du mois\n"
             "!top : Affiche le top 10 des membres les plus actifs\n"
+            "!historique : Affiche les scores du mois précédent\n"
         )
         if message.author.guild_permissions.administrator:
             help_message += "!reset : Réinitialise les statistiques\n"
@@ -86,7 +93,7 @@ async def on_message(message: discord.Message):
     if message.content == "!nb_messages":
         await message.channel.send(f"{message.author.mention}, tu as envoyé {message_count} message(s) en {month_name} !")
 
-    if message.content == "!top" or datetime.now().day == 1:
+    if message.content == "!top":
         top_users = sorted(data["guilds"][guild_id]["users"].items(), key=lambda x: x[1], reverse=True)
         if not top_users:
             await message.channel.send("Aucune donnée pour ce mois.")
@@ -94,6 +101,18 @@ async def on_message(message: discord.Message):
 
         top_message = "\n".join([f"{index + 1}. <@{user_id}>: {message_count} messages" for index, (user_id, message_count) in enumerate(top_users[:10])])
         await message.channel.send(f"Voici le top 10 des membres les plus actifs en {month_name} :\n{top_message}")
+
+    if message.content == "!historique":
+        if previous_month in data["guilds"][guild_id]["history"]:
+            top_previous = sorted(data["guilds"][guild_id]["history"][previous_month].items(), key=lambda x: x[1], reverse=True)
+            if not top_previous:
+                await message.channel.send(f"Aucune donnée pour {previous_month}.")
+                return
+
+            top_message_prev = "\n".join([f"{index + 1}. <@{user_id}>: {message_count} messages" for index, (user_id, message_count) in enumerate(top_previous[:10])])
+            await message.channel.send(f"Voici le top 10 des membres les plus actifs en {previous_month} :\n{top_message_prev}")
+        else:
+            await message.channel.send(f"Aucune donnée enregistrée pour {previous_month}.")
 
     if message.content == "!reset" and message.author.guild_permissions.administrator:
         data["guilds"][guild_id]["users"] = {}
