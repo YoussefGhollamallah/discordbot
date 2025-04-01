@@ -18,7 +18,6 @@ intents.message_content = True
 
 bot = discord.Client(intents=intents)
 
-ANNONCE_CHANNEL = int(os.getenv("ANNONCE_CHANNEL"))
 TWITCH_CLIENT_ID = os.getenv("TWITCH_CLIENT_ID")
 TWITCH_CLIENT_SECRET = os.getenv("TWITCH_CLIENT_SECRET")
 
