@@ -578,7 +578,6 @@ async def stream_list(ctx):
         print(f"Erreur lors de la récupération des streamers: {e}")
         await ctx.send("Une erreur est survenue lors de la récupération de la liste des streamers.")
 
-
 @bot.event
 async def on_message(message: discord.Message):
     print(f"Message reçu de {message.author}: {message.content}")
@@ -587,7 +586,7 @@ async def on_message(message: discord.Message):
     if message.author == bot.user:
         return
 
-    # Cache pour suivre les messages déjà traités
+    # Cache temporaire pour éviter les doublons
     if hasattr(bot, "processed_messages"):
         if message.id in bot.processed_messages:
             return
@@ -597,7 +596,7 @@ async def on_message(message: discord.Message):
     # Ajouter le message au cache
     bot.processed_messages.add(message.id)
 
-    # Nettoyer le cache après 5 secondes
+    # Nettoyer le cache après 5 secondes pour éviter une surcharge
     async def clean_cache(msg_id):
         await asyncio.sleep(5)
         try:
@@ -607,24 +606,7 @@ async def on_message(message: discord.Message):
 
     bot.loop.create_task(clean_cache(message.id))
 
-    # Le reste du code original inchangé
-    guild_id = str(message.guild.id)
-    user_id = str(message.author.id)
-    current_date = datetime.now()
-    current_month = current_date.month
-    current_year = current_date.year
-    previous_month = current_month - 1 if current_month > 1 else 12
-    previous_year = current_year - 1 if current_month == 1 else current_year
-
-    if current_date.day == 1 and current_date.hour == 0:
-        print("Changement de mois détecté")
-        save_month_history(guild_id, previous_month, previous_year)
-
-    if message.content not in ["!nb_messages", "!top", "!reset", "!aide", "!historique", "!stream"] and not message.author.id == 310788228368039937:
-        print("Mise à jour du compteur de messages")
-        update_message_count(guild_id, user_id, current_month, current_year)
-
-    print("Traitement des commandes")
+    # Traitement des commandes
     await bot.process_commands(message)
 
     print("Fin du traitement du message")
