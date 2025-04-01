@@ -578,6 +578,7 @@ async def stream_list(ctx):
         print(f"Erreur lors de la récupération des streamers: {e}")
         await ctx.send("Une erreur est survenue lors de la récupération de la liste des streamers.")
 
+        
 @bot.event
 async def on_message(message: discord.Message):
     if message.author.bot or message.guild is None:
@@ -599,6 +600,6 @@ async def on_message(message: discord.Message):
     if message.content not in ["!nb_messages", "!top", "!reset", "!aide", "!historique", "!stream"] and not message.author.id == 310788228368039937:
         update_message_count(guild_id, user_id, current_month, current_year)
 
-    await bot.process_commands(message)
+    await bot.process_commands(message) # Moved to the end of the function
 
 bot.run(os.getenv("DISCORD_ENV"))
