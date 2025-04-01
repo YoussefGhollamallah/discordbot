@@ -357,8 +357,8 @@ async def on_ready():
     print(f"Bot connecté en tant que {bot.user}")
     bot.loop.create_task(check_streams())
 
-@bot.command(name="help")
-async def help(ctx):
+@bot.command(name="aide")
+async def aide(ctx):
     help_message = (
         "Voici la liste des commandes disponibles :\n"
         "!nb_messages : Affiche ton nombre de messages du mois\n"
@@ -590,7 +590,7 @@ async def on_message(message: discord.Message):
         save_month_history(guild_id, previous_month, previous_year)
 
     # Mettre à jour le compteur de messages
-    if message.content not in ["!nb_messages", "!top", "!reset", "!help", "!historique", "!stream"] and not message.author.id == 310788228368039937:
+    if message.content not in ["!nb_messages", "!top", "!reset", "!aide", "!historique", "!stream"] and not message.author.id == 310788228368039937:
         update_message_count(guild_id, user_id, current_month, current_year)
 
     await bot.process_commands(message)
