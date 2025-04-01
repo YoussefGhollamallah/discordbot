@@ -327,7 +327,7 @@ async def on_message(message: discord.Message):
         save_month_history(guild_id, previous_month, previous_year)
 
     # Mettre à jour le compteur de messages
-    if message.content not in ["!nb_messages", "!top", "!reset", "!help", "!historique"] and not message.author.id == 310788228368039937:
+    if message.content not in ["!nb_messages", "!top", "!reset", "!help", "!historique", "!stream"] and not message.author.id == 310788228368039937:
         update_message_count(guild_id, user_id, current_month, current_year)
 
     # Récupérer le nombre de messages de l'utilisateur
@@ -367,36 +367,58 @@ async def on_message(message: discord.Message):
                     return
                 
                 # Vérifier si le streamer existe sur Twitch
-                token = await get_twitch_token()
-                headers = {
-                    "Client-ID": TWITCH_CLIENT_ID,
-                    "Authorization": f"Bearer {token}"
-                }
-                
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(
-                        f"https://api.twitch.tv/helix/users?login={username}",
-                        headers=headers
-                    ) as response:
-                        data = await response.json()
-                        if not data.get("data"):
-                            await message.channel.send("Ce streamer n'existe pas sur Twitch.")
-                            conn.close()
-                            return
+                try:
+                    token = await get_twitch_token()
+                    if not token:
+                        await message.channel.send("Erreur : Impossible d'obtenir le token Twitch. Vérifiez vos identifiants Twitch.")
+                        conn.close()
+                        return
+
+                    headers = {
+                        "Client-ID": TWITCH_CLIENT_ID,
+                        "Authorization": f"Bearer {token}"
+                    }
+                    
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(
+                            f"https://api.twitch.tv/helix/users?login={username}",
+                            headers=headers
+                        ) as response:
+                            if response.status != 200:
+                                await message.channel.send(f"Erreur Twitch API : {response.status}")
+                                conn.close()
+                                return
+                                
+                            data = await response.json()
+                            if not data.get("data"):
+                                await message.channel.send("Ce streamer n'existe pas sur Twitch.")
+                                conn.close()
+                                return
+                except Exception as e:
+                    print(f"Erreur lors de la vérification Twitch : {e}")
+                    await message.channel.send("Erreur lors de la vérification du streamer sur Twitch.")
+                    conn.close()
+                    return
                 
                 # Ajouter le streamer
-                cursor.execute('''
-                INSERT INTO streamers (guild_id, channel_id, streamer_url, username)
-                VALUES (?, ?, ?, ?)
-                ''', (guild_id, message.channel.id, url, username))
-                
-                conn.commit()
-                conn.close()
-                await message.channel.send(f"Le streamer {username} a été ajouté à la liste de suivi.")
+                try:
+                    cursor.execute('''
+                    INSERT INTO streamers (guild_id, channel_id, streamer_url, username)
+                    VALUES (?, ?, ?, ?)
+                    ''', (guild_id, message.channel.id, url, username))
+                    
+                    conn.commit()
+                    conn.close()
+                    await message.channel.send(f"Le streamer {username} a été ajouté à la liste de suivi.")
+                except Error as e:
+                    print(f"Erreur SQL lors de l'ajout du streamer : {e}")
+                    await message.channel.send("Erreur lors de l'enregistrement du streamer dans la base de données.")
+                    conn.close()
+                    return
                 
             except Error as e:
-                print(f"Erreur lors de l'ajout du streamer: {e}")
-                await message.channel.send("Une erreur est survenue lors de l'ajout du streamer.")
+                print(f"Erreur lors de l'ajout du streamer : {e}")
+                await message.channel.send("Une erreur est survenue lors de l'ajout du streamer. Vérifiez les logs pour plus de détails.")
 
         elif args[1] == "remove" and len(args) == 3:
             url = args[2].lower()
