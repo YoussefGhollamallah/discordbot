@@ -1,3 +1,4 @@
 .env
 venv/
 message_count.json
+bot.db
