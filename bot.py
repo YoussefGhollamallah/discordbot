@@ -578,10 +578,13 @@ async def stream_list(ctx):
         print(f"Erreur lors de la récupération des streamers: {e}")
         await ctx.send("Une erreur est survenue lors de la récupération de la liste des streamers.")
 
-        
+
 @bot.event
 async def on_message(message: discord.Message):
+    print(f"Message reçu de {message.author}: {message.content}")
+
     if message.author.bot or message.guild is None:
+        print("Message ignoré (bot ou message privé)")
         return
 
     guild_id = str(message.guild.id)
@@ -592,14 +595,17 @@ async def on_message(message: discord.Message):
     previous_month = current_month - 1 if current_month > 1 else 12
     previous_year = current_year - 1 if current_month == 1 else current_year
 
-    # Vérifier si le mois a changé
     if current_date.day == 1 and current_date.hour == 0:
+        print("Changement de mois détecté")
         save_month_history(guild_id, previous_month, previous_year)
 
-    # Mettre à jour le compteur de messages
     if message.content not in ["!nb_messages", "!top", "!reset", "!aide", "!historique", "!stream"] and not message.author.id == 310788228368039937:
+        print("Mise à jour du compteur de messages")
         update_message_count(guild_id, user_id, current_month, current_year)
 
-    await bot.process_commands(message) # Moved to the end of the function
+    print("Traitement des commandes")
+    await bot.process_commands(message)
+
+    print("Fin du traitement du message")
 
 bot.run(os.getenv("DISCORD_ENV"))
