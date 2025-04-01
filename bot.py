@@ -272,6 +272,9 @@ def extract_username_from_url(url):
         match = re.search(pattern, url)
         if match:
             return match.group(1)
+    
+    # Si aucun match n'est trouvé
+    print(f"URL Twitch non valide ou format incorrect: {url}")
     return None
 
 async def get_twitch_token():
