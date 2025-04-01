@@ -587,11 +587,27 @@ async def on_message(message: discord.Message):
     if message.author == bot.user:
         return
 
-    # Empêcher le bot de traiter plusieurs fois le même message
-    if hasattr(message, "handled") and message.handled:
-        return
-    message.handled = True
+    # Cache pour suivre les messages déjà traités
+    if hasattr(bot, "processed_messages"):
+        if message.id in bot.processed_messages:
+            return
+    else:
+        bot.processed_messages = set()
 
+    # Ajouter le message au cache
+    bot.processed_messages.add(message.id)
+
+    # Nettoyer le cache après 5 secondes
+    async def clean_cache(msg_id):
+        await asyncio.sleep(5)
+        try:
+            bot.processed_messages.remove(msg_id)
+        except KeyError:
+            pass
+
+    bot.loop.create_task(clean_cache(message.id))
+
+    # Le reste du code original inchangé
     guild_id = str(message.guild.id)
     user_id = str(message.author.id)
     current_date = datetime.now()
@@ -600,12 +616,10 @@ async def on_message(message: discord.Message):
     previous_month = current_month - 1 if current_month > 1 else 12
     previous_year = current_year - 1 if current_month == 1 else current_year
 
-    # Sauvegarde mensuelle si c'est le premier jour du mois à minuit
     if current_date.day == 1 and current_date.hour == 0:
         print("Changement de mois détecté")
         save_month_history(guild_id, previous_month, previous_year)
 
-    # Mise à jour du compteur de messages si ce n'est pas une commande ou un message spécifique
     if message.content not in ["!nb_messages", "!top", "!reset", "!aide", "!historique", "!stream"] and not message.author.id == 310788228368039937:
         print("Mise à jour du compteur de messages")
         update_message_count(guild_id, user_id, current_month, current_year)
@@ -614,6 +628,7 @@ async def on_message(message: discord.Message):
     await bot.process_commands(message)
 
     print("Fin du traitement du message")
+
 
 
 bot.run(os.getenv("DISCORD_ENV"))
