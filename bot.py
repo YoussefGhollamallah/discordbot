@@ -361,13 +361,6 @@ async def on_message(message: discord.Message):
     if message.author.bot or message.guild is None:
         return
 
-    # Vérifier si le message est une commande
-    if message.content.startswith("!"):
-        # Vérifier si le message a déjà été traité
-        if hasattr(message, 'processed') and message.processed:
-            return
-        message.processed = True
-
     guild_id = str(message.guild.id)
     user_id = str(message.author.id)
     current_date = datetime.now()
