@@ -583,8 +583,7 @@ async def stream_list(ctx):
 async def on_message(message: discord.Message):
     print(f"Message reçu de {message.author}: {message.content}")
 
-    if message.author.bot or message.guild is None:
-        print("Message ignoré (bot ou message privé)")
+    if message.author == bot.user:
         return
 
     guild_id = str(message.guild.id)
