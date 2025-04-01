@@ -542,6 +542,7 @@ async def on_message(message: discord.Message):
                 "!stream list : Affiche la liste des streamers suivis\n"
             )
         await message.channel.send(help_message)
+        return
 
     if message.content == "!nb_messages":
         await message.channel.send(f"{message.author.mention}, tu as envoyé {message_count} message(s) en {get_month_name(current_month)} !")
