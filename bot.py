@@ -6,8 +6,8 @@ from dotenv import load_dotenv
 import asyncio
 import aiohttp
 import re
-import sqlite3
-from sqlite3 import Error
+import mysql.connector
+from mysql.connector import Error
 
 load_dotenv()
 
@@ -21,24 +21,49 @@ bot = discord.Client(intents=intents)
 TWITCH_CLIENT_ID = os.getenv("TWITCH_CLIENT_ID")
 TWITCH_CLIENT_SECRET = os.getenv("TWITCH_CLIENT_SECRET")
 
-DB_FILE = "bot.db"
+# Configuration MySQL
+DB_CONFIG = {
+    'host': os.getenv('DB_HOST', '193.203.168.103'),
+    'user': os.getenv('DB_USER', 'u126908064_menbas'),
+    'password': os.getenv('DB_PASSWORD', 'Abdelkaderdu13!'),
+    'database': os.getenv('DB_NAME', 'u126908064_discordbot')
+}
 
 # Dictionnaire pour suivre l'état des streams
 live_status = {}
 
+def get_db_connection():
+    try:
+        connection = mysql.connector.connect(**DB_CONFIG)
+        return connection
+    except Error as e:
+        print(f"Erreur de connexion à la base de données: {e}")
+        return None
+
 def create_database():
     try:
-        conn = sqlite3.connect(DB_FILE)
-        cursor = conn.cursor()
+        # Créer la connexion sans spécifier de base de données
+        connection = mysql.connector.connect(
+            host=DB_CONFIG['host'],
+            user=DB_CONFIG['user'],
+            password=DB_CONFIG['password']
+        )
+        cursor = connection.cursor()
+
+        # Créer la base de données si elle n'existe pas
+        cursor.execute(f"CREATE DATABASE IF NOT EXISTS {DB_CONFIG['database']}")
+        
+        # Utiliser la base de données
+        cursor.execute(f"USE {DB_CONFIG['database']}")
         
         # Table des streamers
         cursor.execute('''
         CREATE TABLE IF NOT EXISTS streamers (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            guild_id TEXT NOT NULL,
-            channel_id TEXT NOT NULL,
-            streamer_url TEXT NOT NULL,
-            username TEXT NOT NULL,
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            guild_id VARCHAR(255) NOT NULL,
+            channel_id VARCHAR(255) NOT NULL,
+            streamer_url VARCHAR(255) NOT NULL,
+            username VARCHAR(255) NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         ''')
@@ -46,47 +71,51 @@ def create_database():
         # Table des messages
         cursor.execute('''
         CREATE TABLE IF NOT EXISTS messages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            guild_id TEXT NOT NULL,
-            user_id TEXT NOT NULL,
-            message_count INTEGER DEFAULT 0,
-            month INTEGER NOT NULL,
-            year INTEGER NOT NULL,
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            guild_id VARCHAR(255) NOT NULL,
+            user_id VARCHAR(255) NOT NULL,
+            message_count INT DEFAULT 0,
+            month INT NOT NULL,
+            year INT NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(guild_id, user_id, month, year)
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            UNIQUE KEY unique_message (guild_id, user_id, month, year)
         )
         ''')
 
         # Table de l'historique
         cursor.execute('''
         CREATE TABLE IF NOT EXISTS message_history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            guild_id TEXT NOT NULL,
-            user_id TEXT NOT NULL,
-            message_count INTEGER NOT NULL,
-            month INTEGER NOT NULL,
-            year INTEGER NOT NULL,
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            guild_id VARCHAR(255) NOT NULL,
+            user_id VARCHAR(255) NOT NULL,
+            message_count INT NOT NULL,
+            month INT NOT NULL,
+            year INT NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         ''')
         
-        conn.commit()
-        conn.close()
+        connection.commit()
+        connection.close()
         print("Base de données créée avec succès!")
     except Error as e:
         print(f"Erreur lors de la création de la base de données: {e}")
 
 def update_message_count(guild_id, user_id, month, year):
     try:
-        conn = sqlite3.connect(DB_FILE)
+        conn = get_db_connection()
+        if not conn:
+            return False
+            
         cursor = conn.cursor()
         
         cursor.execute('''
         INSERT INTO messages (guild_id, user_id, message_count, month, year)
-        VALUES (?, ?, 1, ?, ?)
-        ON CONFLICT(guild_id, user_id, month, year) 
-        DO UPDATE SET message_count = message_count + 1, updated_at = CURRENT_TIMESTAMP
+        VALUES (%s, %s, 1, %s, %s)
+        ON DUPLICATE KEY UPDATE 
+        message_count = message_count + 1,
+        updated_at = CURRENT_TIMESTAMP
         ''', (guild_id, user_id, month, year))
         
         conn.commit()
@@ -98,14 +127,17 @@ def update_message_count(guild_id, user_id, month, year):
 
 def save_month_history(guild_id, month, year):
     try:
-        conn = sqlite3.connect(DB_FILE)
+        conn = get_db_connection()
+        if not conn:
+            return False
+            
         cursor = conn.cursor()
         
         # Récupérer les messages du mois
         cursor.execute('''
         SELECT user_id, message_count 
         FROM messages 
-        WHERE guild_id = ? AND month = ? AND year = ?
+        WHERE guild_id = %s AND month = %s AND year = %s
         ''', (guild_id, month, year))
         
         messages = cursor.fetchall()
@@ -114,13 +146,13 @@ def save_month_history(guild_id, month, year):
         for user_id, message_count in messages:
             cursor.execute('''
             INSERT INTO message_history (guild_id, user_id, message_count, month, year)
-            VALUES (?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s)
             ''', (guild_id, user_id, message_count, month, year))
         
         # Réinitialiser les compteurs
         cursor.execute('''
         DELETE FROM messages 
-        WHERE guild_id = ? AND month = ? AND year = ?
+        WHERE guild_id = %s AND month = %s AND year = %s
         ''', (guild_id, month, year))
         
         conn.commit()
@@ -132,13 +164,16 @@ def save_month_history(guild_id, month, year):
 
 def get_user_message_count(guild_id, user_id, month, year):
     try:
-        conn = sqlite3.connect(DB_FILE)
+        conn = get_db_connection()
+        if not conn:
+            return 0
+            
         cursor = conn.cursor()
         
         cursor.execute('''
         SELECT message_count 
         FROM messages 
-        WHERE guild_id = ? AND user_id = ? AND month = ? AND year = ?
+        WHERE guild_id = %s AND user_id = %s AND month = %s AND year = %s
         ''', (guild_id, user_id, month, year))
         
         result = cursor.fetchone()
@@ -150,15 +185,18 @@ def get_user_message_count(guild_id, user_id, month, year):
 
 def get_top_users(guild_id, month, year, limit=10):
     try:
-        conn = sqlite3.connect(DB_FILE)
+        conn = get_db_connection()
+        if not conn:
+            return []
+            
         cursor = conn.cursor()
         
         cursor.execute('''
         SELECT user_id, message_count 
         FROM messages 
-        WHERE guild_id = ? AND month = ? AND year = ?
+        WHERE guild_id = %s AND month = %s AND year = %s
         ORDER BY message_count DESC 
-        LIMIT ?
+        LIMIT %s
         ''', (guild_id, month, year, limit))
         
         results = cursor.fetchall()
@@ -170,15 +208,18 @@ def get_top_users(guild_id, month, year, limit=10):
 
 def get_month_history(guild_id, month, year, limit=10):
     try:
-        conn = sqlite3.connect(DB_FILE)
+        conn = get_db_connection()
+        if not conn:
+            return []
+            
         cursor = conn.cursor()
         
         cursor.execute('''
         SELECT user_id, message_count 
         FROM message_history 
-        WHERE guild_id = ? AND month = ? AND year = ?
+        WHERE guild_id = %s AND month = %s AND year = %s
         ORDER BY message_count DESC 
-        LIMIT ?
+        LIMIT %s
         ''', (guild_id, month, year, limit))
         
         results = cursor.fetchall()
@@ -190,12 +231,15 @@ def get_month_history(guild_id, month, year, limit=10):
 
 def reset_stats(guild_id):
     try:
-        conn = sqlite3.connect(DB_FILE)
+        conn = get_db_connection()
+        if not conn:
+            return False
+            
         cursor = conn.cursor()
         
         cursor.execute('''
         DELETE FROM messages 
-        WHERE guild_id = ?
+        WHERE guild_id = %s
         ''', (guild_id,))
         
         conn.commit()
@@ -259,7 +303,10 @@ async def check_streams():
     await bot.wait_until_ready()
     while not bot.is_closed():
         try:
-            conn = sqlite3.connect(DB_FILE)
+            conn = get_db_connection()
+            if not conn:
+                continue
+            
             cursor = conn.cursor()
             
             # Récupérer tous les streamers
@@ -354,11 +401,15 @@ async def on_message(message: discord.Message):
                 
             # Vérifier si le streamer existe déjà
             try:
-                conn = sqlite3.connect(DB_FILE)
+                conn = get_db_connection()
+                if not conn:
+                    await message.channel.send("Erreur de connexion à la base de données.")
+                    return
+                    
                 cursor = conn.cursor()
                 cursor.execute('''
                 SELECT id FROM streamers 
-                WHERE guild_id = ? AND streamer_url = ?
+                WHERE guild_id = %s AND streamer_url = %s
                 ''', (guild_id, url))
                 
                 if cursor.fetchone():
@@ -404,7 +455,7 @@ async def on_message(message: discord.Message):
                 try:
                     cursor.execute('''
                     INSERT INTO streamers (guild_id, channel_id, streamer_url, username)
-                    VALUES (?, ?, ?, ?)
+                    VALUES (%s, %s, %s, %s)
                     ''', (guild_id, message.channel.id, url, username))
                     
                     conn.commit()
@@ -423,12 +474,16 @@ async def on_message(message: discord.Message):
         elif args[1] == "remove" and len(args) == 3:
             url = args[2].lower()
             try:
-                conn = sqlite3.connect(DB_FILE)
+                conn = get_db_connection()
+                if not conn:
+                    await message.channel.send("Erreur de connexion à la base de données.")
+                    return
+                    
                 cursor = conn.cursor()
                 
                 cursor.execute('''
                 DELETE FROM streamers 
-                WHERE guild_id = ? AND streamer_url = ?
+                WHERE guild_id = %s AND streamer_url = %s
                 ''', (guild_id, url))
                 
                 if cursor.rowcount > 0:
@@ -446,13 +501,17 @@ async def on_message(message: discord.Message):
 
         elif args[1] == "list":
             try:
-                conn = sqlite3.connect(DB_FILE)
+                conn = get_db_connection()
+                if not conn:
+                    await message.channel.send("Erreur de connexion à la base de données.")
+                    return
+                    
                 cursor = conn.cursor()
                 
                 cursor.execute('''
                 SELECT streamer_url 
                 FROM streamers 
-                WHERE guild_id = ?
+                WHERE guild_id = %s
                 ''', (guild_id,))
                 
                 streamers = cursor.fetchall()
