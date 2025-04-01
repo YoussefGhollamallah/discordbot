@@ -17,6 +17,9 @@ intents = discord.Intents.default()
 intents.messages = True
 intents.message_content = True
 
+# Configuration OAuth
+OAUTH_REDIRECT_URL = os.getenv("OAUTH_REDIRECT_URL", "https://bbfd74f9-9a64-4ed0-a8f8-185f404347ad.up.railway.app/oauth/callback")
+
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 TWITCH_CLIENT_ID = os.getenv("TWITCH_CLIENT_ID")
