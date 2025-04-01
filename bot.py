@@ -447,24 +447,26 @@ async def stream_add(ctx, url: str):
     if not username:
         await ctx.send("URL Twitch invalide. Format attendu : https://twitch.tv/nomdustreamer")
         return
-    
+        
+    # Vérifier si le streamer existe déjà
     try:
         conn = get_db_connection()
         if not conn:
             await ctx.send("Erreur de connexion à la base de données.")
             return
-        
+            
         cursor = conn.cursor()
         cursor.execute('''
-            SELECT id FROM streamers 
-            WHERE guild_id = %s AND streamer_url = %s
+        SELECT id FROM streamers 
+        WHERE guild_id = %s AND streamer_url = %s
         ''', (str(ctx.guild.id), url))
         
         if cursor.fetchone():
             await ctx.send("Ce streamer est déjà dans la liste.")
             conn.close()
             return
-
+        
+        # Vérifier si le streamer existe sur Twitch
         try:
             token = await get_twitch_token()
             if not token:
@@ -483,7 +485,7 @@ async def stream_add(ctx, url: str):
                     headers=headers
                 ) as response:
                     if response.status != 200:
-                        await ctx.send(f"Erreur Twitch API : {response.status}, {await response.text()}")
+                        await ctx.send(f"Erreur Twitch API : {response.status}")
                         conn.close()
                         return
                         
@@ -492,17 +494,17 @@ async def stream_add(ctx, url: str):
                         await ctx.send("Ce streamer n'existe pas sur Twitch.")
                         conn.close()
                         return
-
         except Exception as e:
             print(f"Erreur lors de la vérification Twitch : {e}")
             await ctx.send("Erreur lors de la vérification du streamer sur Twitch.")
             conn.close()
             return
-
+        
+        # Ajouter le streamer
         try:
             cursor.execute('''
-                INSERT INTO streamers (guild_id, channel_id, streamer_url, username)
-                VALUES (%s, %s, %s, %s)
+            INSERT INTO streamers (guild_id, channel_id, streamer_url, username)
+            VALUES (%s, %s, %s, %s)
             ''', (str(ctx.guild.id), ctx.channel.id, url, username))
             
             conn.commit()
