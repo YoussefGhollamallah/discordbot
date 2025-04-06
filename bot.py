@@ -73,7 +73,7 @@ async def announce_live(guild_id, channel_id, streamer_url, username):
             color=discord.Color.purple()
         )
         embed.add_field(name="Cliquez ici pour regarder", value=streamer_url)
-        await channel.send(f"🔴 Alerte live ! {username} est en direct : {streamer_url}", embed=embed)
+        await channel.send(f"🔴 Alerte live ! @everyon {username} est en direct : {streamer_url}", embed=embed)
 
 async def twitch_live_checker():
     await bot.wait_until_ready()
