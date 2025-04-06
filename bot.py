@@ -1,8 +1,8 @@
 import discord
 import os
-import json
 from datetime import datetime
 from dotenv import load_dotenv
+import mysql.connector
 
 load_dotenv()
 
@@ -15,9 +15,22 @@ bot = discord.Client(intents=intents)
 
 ANNONCE_CHANNEL = int(os.getenv("ANNONCE_CHANNEL"))
 
-MESSAGE_FILE = "message_count.json"
+# Informations de connexion à la base de données
+DB_HOST = os.getenv("DB_HOST")
+DB_USER = os.getenv("DB_USER")
+DB_PASSWORD = os.getenv("DB_PASSWORD")
+DB_NAME = os.getenv("DB_NAME")
 
-# Fonction pour obtenir le mois en toutes lettres
+# Fonction pour établir une connexion à la base de données
+def connect_db():
+    return mysql.connector.connect(
+        host=DB_HOST,
+        user=DB_USER,
+        password=DB_PASSWORD,
+        database=DB_NAME
+    )
+
+# Fonction pour obtenir le mois en toutes lettres (inchangée)
 def get_month_name(month_number):
     months = {
         1: "Janvier", 2: "Février", 3: "Mars", 4: "Avril",
@@ -25,18 +38,6 @@ def get_month_name(month_number):
         9: "Septembre", 10: "Octobre", 11: "Novembre", 12: "Décembre"
     }
     return months.get(month_number, "Inconnu")
-
-# Fonction pour charger les données depuis le fichier JSON
-def load_message_data():
-    if not os.path.exists(MESSAGE_FILE):
-        return {"guilds": {}}
-    with open(MESSAGE_FILE, "r", encoding="utf-8") as file:
-        return json.load(file)
-
-# Fonction pour sauvegarder les données dans le fichier JSON
-def save_message_data(data):
-    with open(MESSAGE_FILE, "w", encoding="utf-8") as file:
-        json.dump(data, file, indent=4)
 
 @bot.event
 async def on_ready():
@@ -47,76 +48,122 @@ async def on_message(message: discord.Message):
     if message.author.bot or message.guild is None:
         return  # Ignore les messages des bots et les DM
 
-    # Charger les données du fichier
-    data = load_message_data()
     guild_id = str(message.guild.id)
-    current_month = datetime.now().month
-    month_name = get_month_name(current_month)
-    previous_month = get_month_name(current_month - 1 if current_month > 1 else 12)
-
-    # Initialiser la structure du serveur si elle n'existe pas
-    if guild_id not in data["guilds"]:
-        data["guilds"][guild_id] = {"users": {}, "month": current_month, "history": {}}
-
-    # Vérifier si le mois a changé et sauvegarder l'ancien score
-    if data["guilds"][guild_id]["month"] != current_month:
-        # Sauvegarder les scores du mois précédent dans "history"
-        data["guilds"][guild_id]["history"][previous_month] = data["guilds"][guild_id]["users"]
-
-        # Réinitialiser les données pour le nouveau mois
-        data["guilds"][guild_id]["users"] = {}
-        data["guilds"][guild_id]["month"] = current_month
-
-    # Mettre à jour le nombre de messages de l'utilisateur
     user_id = str(message.author.id)
-    if message.content not in ["!nb_messages", "!top", "!reset", "!help", "!historique"] and not message.author.id == 310788228368039937:
-        data["guilds"][guild_id]["users"][user_id] = data["guilds"][guild_id]["users"].get(user_id, 0) + 1
+    now = datetime.now()
+    current_month = now.month
+    current_year = now.year
+    month_name = get_month_name(current_month)
+    previous_month = current_month - 1 if current_month > 1 else 12
+    previous_year = current_year if current_month > 1 else current_year - 1
+    previous_month_name = get_month_name(previous_month)
 
-    # Sauvegarder les données
-    save_message_data(data)
+    try:
+        db = connect_db()
+        cursor = db.cursor()
 
-    # Récupérer le nombre de messages envoyés par l'utilisateur
-    message_count = data["guilds"][guild_id]["users"].get(user_id, 0)
+        if message.content not in ["!nb_messages", "!top", "!reset", "!help", "!historique"] and not message.author.id == 310788228368039937:
+            # Incrémenter le compteur de messages
+            query = """
+            INSERT INTO messages (guild_id, user_id, month, year)
+            VALUES (%s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE message_count = message_count + 1, updated_at = CURRENT_TIMESTAMP
+            """
+            values = (guild_id, user_id, current_month, current_year)
+            cursor.execute(query, values)
+            db.commit()
 
-    # Traiter les commandes
-    if message.content == "!help":
-        help_message = (
-            "Voici la liste des commandes disponibles :\n"
-            "!nb_messages : Affiche ton nombre de messages du mois\n"
-            "!top : Affiche le top 10 des membres les plus actifs\n"
-            "!historique : Affiche les scores du mois précédent\n"
-        )
-        if message.author.guild_permissions.administrator:
-            help_message += "!reset : Réinitialise les statistiques\n"
-        await message.channel.send(help_message)
+        # Récupérer le nombre de messages de l'utilisateur pour ce mois
+        if message.content == "!nb_messages":
+            query = "SELECT message_count FROM messages WHERE guild_id = %s AND user_id = %s AND month = %s AND year = %s"
+            values = (guild_id, user_id, current_month, current_year)
+            cursor.execute(query, values)
+            result = cursor.fetchone()
+            message_count = result[0] if result else 0
+            await message.channel.send(f"{message.author.mention}, tu as envoyé {message_count} message(s) en {month_name} !")
 
-    if message.content == "!nb_messages":
-        await message.channel.send(f"{message.author.mention}, tu as envoyé {message_count} message(s) en {month_name} !")
+        # Afficher le top 10 des membres les plus actifs ce mois
+        elif message.content == "!top":
+            query = """
+            SELECT user_id, message_count
+            FROM messages
+            WHERE guild_id = %s AND month = %s AND year = %s
+            ORDER BY message_count DESC
+            LIMIT 10
+            """
+            values = (guild_id, current_month, current_year)
+            cursor.execute(query, values)
+            top_users = cursor.fetchall()
 
-    if message.content == "!top":
-        top_users = sorted(data["guilds"][guild_id]["users"].items(), key=lambda x: x[1], reverse=True)
-        if not top_users:
-            await message.channel.send("Aucune donnée pour ce mois.")
-            return
+            if not top_users:
+                await message.channel.send(f"Aucune donnée pour {month_name}.")
+            else:
+                top_message = f"Voici le top 10 des membres les plus actifs en {month_name} :\n"
+                for index, (user_id, message_count) in enumerate(top_users):
+                    member = message.guild.get_member(int(user_id))
+                    user_name = member.display_name if member else "Utilisateur inconnu"
+                    top_message += f"{index + 1}. {user_name}: {message_count} messages\n"
+                await message.channel.send(top_message)
 
-        top_message = "\n".join([f"{index + 1}. <@{user_id}>: {message_count} messages" for index, (user_id, message_count) in enumerate(top_users[:10])])
-        await message.channel.send(f"Voici le top 10 des membres les plus actifs en {month_name} :\n{top_message}")
+        # Afficher l'historique du mois précédent
+        elif message.content == "!historique":
+            query = """
+            SELECT user_id, message_count
+            FROM message_history
+            WHERE guild_id = %s AND month = %s AND year = %s
+            ORDER BY message_count DESC
+            LIMIT 10
+            """
+            values = (guild_id, previous_month, previous_year)
+            cursor.execute(query, values)
+            top_previous = cursor.fetchall()
 
-    if message.content == "!historique":
-        if previous_month in data["guilds"][guild_id]["history"]:
-            top_previous = sorted(data["guilds"][guild_id]["history"][previous_month].items(), key=lambda x: x[1], reverse=True)
             if not top_previous:
-                await message.channel.send(f"Aucune donnée pour {previous_month}.")
-                return
+                await message.channel.send(f"Aucune donnée enregistrée pour {previous_month_name}.")
+            else:
+                top_message_prev = f"Voici le top 10 des membres les plus actifs en {previous_month_name} :\n"
+                for index, (user_id, message_count) in enumerate(top_previous):
+                    member = message.guild.get_member(int(user_id))
+                    user_name = member.display_name if member else "Utilisateur inconnu"
+                    top_message_prev += f"{index + 1}. {user_name}: {message_count} messages\n"
+                await message.channel.send(top_message_prev)
 
-            top_message_prev = "\n".join([f"{index + 1}. <@{user_id}>: {message_count} messages" for index, (user_id, message_count) in enumerate(top_previous[:10])])
-            await message.channel.send(f"Voici le top 10 des membres les plus actifs en {previous_month} :\n{top_message_prev}")
-        else:
-            await message.channel.send(f"Aucune donnée enregistrée pour {previous_month}.")
+        # Réinitialiser les statistiques (nécessite des modifications pour la base de données)
+        elif message.content == "!reset" and message.author.guild_permissions.administrator:
+            # Déplacer les données actuelles vers l'historique
+            insert_history_query = """
+            INSERT INTO message_history (guild_id, user_id, message_count, month, year)
+            SELECT guild_id, user_id, message_count, month, year
+            FROM messages
+            WHERE guild_id = %s AND month = %s AND year = %s
+            """
+            insert_history_values = (guild_id, current_month, current_year)
+            cursor.execute(insert_history_query, insert_history_values)
 
-    if message.content == "!reset" and message.author.guild_permissions.administrator:
-        data["guilds"][guild_id]["users"] = {}
-        save_message_data(data)
-        await message.channel.send("Les statistiques ont été réinitialisées pour ce serveur !")
+            # Supprimer les données actuelles
+            delete_query = "DELETE FROM messages WHERE guild_id = %s AND month = %s AND year = %s"
+            delete_values = (guild_id, current_month, current_year)
+            cursor.execute(delete_query, delete_values)
+
+            db.commit()
+            await message.channel.send("Les statistiques du mois actuel ont été réinitialisées pour ce serveur !")
+
+        elif message.content == "!help":
+            help_message = (
+                "Voici la liste des commandes disponibles :\n"
+                "!nb_messages : Affiche ton nombre de messages du mois\n"
+                "!top : Affiche le top 10 des membres les plus actifs\n"
+                "!historique : Affiche les scores du mois précédent\n"
+            )
+            if message.author.guild_permissions.administrator:
+                help_message += "!reset : Réinitialise les statistiques du mois actuel\n"
+            await message.channel.send(help_message)
+
+    except mysql.connector.Error as err:
+        print(f"Erreur de base de données: {err}")
+    finally:
+        if db.is_connected():
+            cursor.close()
+            db.close()
 
 bot.run(os.getenv("DISCORD_ENV"))

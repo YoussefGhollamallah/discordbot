@@ -1,6 +1,3 @@
--- Création de la base de données
-CREATE DATABASE IF NOT EXISTS discord_bot;
-USE discord_bot;
 
 -- Table des streamers
 CREATE TABLE IF NOT EXISTS streamers (
