@@ -12,7 +12,7 @@ intents.messages = True
 intents.message_content = True
 intents.guilds = True
 intents.guild_messages = True
-intents.menbers = True
+intents.members = True  # Correction ici : 'menbers' -> 'members'
 intents.guild_message_reactions = True
 intents.guild_message_typing = True
 
