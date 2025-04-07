@@ -64,16 +64,30 @@ async def check_twitch_live(streamer_username):
         print(f"Erreur lors de la vérification du statut Twitch de {streamer_username}: {e}")
         return None
 
-async def announce_live(guild_id, channel_id, streamer_url, username):
-    channel = bot.get_channel(int(channel_id))
-    if channel:
-        embed = discord.Embed(
-            title=f"{username} est en live sur Twitch !",
-            url=streamer_url,
-            color=discord.Color.purple()
-        )
-        embed.add_field(name="Cliquez ici pour regarder", value=streamer_url)
-        await channel.send(f"🔴 Alerte live ! @everyon {username} est en direct : {streamer_url}", embed=embed)
+# Dictionnaire pour stocker l'état des lives déjà annoncés
+announced_streams = {}
+
+async def announce_live(guild_id, channel_id, streamer_url, username, is_live):
+    # Vérifie si on a déjà annoncé ce live
+    if is_live and not announced_streams.get(username, False):
+        # On annonce le live
+        channel = bot.get_channel(int(channel_id))
+        if channel:
+            embed = discord.Embed(
+                title=f"{username} est en live sur Twitch !",
+                url=streamer_url,
+                color=discord.Color.purple()
+            )
+            embed.add_field(name="Cliquez ici pour regarder", value=streamer_url)
+            await channel.send(f"🔴 Alerte live ! @everyone {username} est en direct : {streamer_url}", embed=embed)
+        
+        # Marque comme annoncé
+        announced_streams[username] = True
+
+    elif not is_live and announced_streams.get(username, False):
+        # Si le streamer est offline, on remet l'annonce à False
+        announced_streams[username] = False
+
 
 async def twitch_live_checker():
     await bot.wait_until_ready()
