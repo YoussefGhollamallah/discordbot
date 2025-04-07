@@ -68,6 +68,7 @@ async def check_twitch_live(streamer_username):
 announced_streams = {}
 
 async def announce_live(guild_id, channel_id, streamer_url, username, stream_info):
+    print(f"Annonce live pour {username}: {stream_info}")  # Debug
     if stream_info["is_live"] and not announced_streams.get(username, False):
         channel = bot.get_channel(int(channel_id))
         if channel:
@@ -79,6 +80,9 @@ async def announce_live(guild_id, channel_id, streamer_url, username, stream_inf
             )
             embed.add_field(name="Cliquez ici pour regarder", value=streamer_url)
             await channel.send(f"🔴 Alerte live ! @everyone {username} est en direct :", embed=embed)
+            print(f"Message envoyé pour {username}")  # Debug
+        else:
+            print(f"Impossible de trouver le canal {channel_id}")  # Debug
 
         announced_streams[username] = True
     elif not stream_info["is_live"] and announced_streams.get(username, False):
