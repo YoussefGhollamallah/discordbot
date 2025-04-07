@@ -8,26 +8,29 @@ import asyncio
 
 load_dotenv()
 
-# Intents
+# Charger les intents
 intents = discord.Intents.default()
 intents.messages = True
 intents.message_content = True
 intents.guilds = True
 intents.guild_messages = True
-intents.members = True
+intents.members = True  # Correction ici : 'menbers' -> 'members'
 
 bot = discord.Client(intents=intents)
 
-# Environnement
 ANNONCE_CHANNEL = int(os.getenv("ANNONCE_CHANNEL"))
+
+# Informations de connexion à la base de données
 DB_HOST = os.getenv("DB_HOST")
 DB_USER = os.getenv("DB_USER")
 DB_PASSWORD = os.getenv("DB_PASSWORD")
 DB_NAME = os.getenv("DB_NAME")
+
+# Informations d'identification Twitch
 TWITCH_CLIENT_ID = os.getenv("TWITCH_CLIENT_ID")
 TWITCH_ACCESS_TOKEN = os.getenv("TWITCH_ACCESS_TOKEN")
 
-# Connexion DB
+# Fonction pour établir une connexion à la base de données
 def connect_db():
     return mysql.connector.connect(
         host=DB_HOST,
@@ -36,6 +39,7 @@ def connect_db():
         database=DB_NAME
     )
 
+# Fonction pour obtenir le mois en toutes lettres (inchangée)
 def get_month_name(month_number):
     months = {
         1: "Janvier", 2: "Février", 3: "Mars", 4: "Avril",
@@ -44,6 +48,7 @@ def get_month_name(month_number):
     }
     return months.get(month_number, "Inconnu")
 
+# Fonction pour vérifier si un streamer Twitch est en live
 async def check_twitch_live(streamer_username):
     headers = {
         'Client-ID': TWITCH_CLIENT_ID,
@@ -52,17 +57,14 @@ async def check_twitch_live(streamer_username):
     url = f'https://api.twitch.tv/helix/streams?user_login={streamer_username}'
     try:
         response = requests.get(url, headers=headers)
-        response.raise_for_status()
+        response.raise_for_status()  # Lève une exception pour les codes d'erreur HTTP
         data = response.json()
-        return {
-            "is_live": bool(data['data']),
-            "title": data['data'][0]['title'] if data['data'] else "",
-            "category": data['data'][0]['game_name'] if data['data'] else ""
-        } if data else None
+        return data['data'][0] if data['data'] else None
     except requests.exceptions.RequestException as e:
         print(f"Erreur lors de la vérification du statut Twitch de {streamer_username}: {e}")
         return None
 
+# Dictionnaire pour stocker l'état des lives déjà annoncés
 announced_streams = {}
 
 async def announce_live(guild_id, channel_id, streamer_url, username, stream_info):
@@ -82,6 +84,7 @@ async def announce_live(guild_id, channel_id, streamer_url, username, stream_inf
     elif not stream_info["is_live"] and announced_streams.get(username, False):
         announced_streams[username] = False
 
+
 async def twitch_live_checker():
     await bot.wait_until_ready()
     while not bot.is_closed():
@@ -95,8 +98,10 @@ async def twitch_live_checker():
             for guild_id, channel_id, streamer_url, username in streamers:
                 stream_data = await check_twitch_live(username)
                 if stream_data:
-                    await announce_live(guild_id, channel_id, streamer_url, username, stream_data)
-                await asyncio.sleep(5)
+                    # Vérifiez si une annonce a déjà été faite récemment (pour éviter les spams)
+                    # Vous pouvez implémenter une logique de cache ou une autre table pour cela
+                    await announce_live(guild_id, channel_id, streamer_url, username)
+                await asyncio.sleep(60)  # Vérifier toutes les minutes (ajustez selon vos besoins)
         except mysql.connector.Error as err:
             print(f"Erreur de base de données dans le checker Twitch: {err}")
         except Exception as e:
@@ -111,7 +116,7 @@ async def on_ready():
 @bot.event
 async def on_message(message: discord.Message):
     if message.author.bot or message.guild is None:
-        return
+        return  # Ignore les messages des bots et les DM
 
     guild_id = str(message.guild.id)
     user_id = str(message.author.id)
@@ -128,6 +133,7 @@ async def on_message(message: discord.Message):
         cursor = db.cursor()
 
         if message.content not in ["!nb_messages", "!top", "!reset", "!help", "!historique", "!add_streamer", "!list_streamers", "!remove_streamer"] and not message.author.id == 310788228368039937:
+            # Incrémenter le compteur de messages
             query = """
             INSERT INTO messages (guild_id, user_id, month, year)
             VALUES (%s, %s, %s, %s)
@@ -137,7 +143,7 @@ async def on_message(message: discord.Message):
             cursor.execute(query, values)
             db.commit()
 
-        # Commandes
+        # Récupérer le nombre de messages de l'utilisateur pour ce mois
         if message.content == "!nb_messages":
             query = "SELECT message_count FROM messages WHERE guild_id = %s AND user_id = %s AND month = %s AND year = %s"
             values = (guild_id, user_id, current_month, current_year)
@@ -146,6 +152,7 @@ async def on_message(message: discord.Message):
             message_count = result[0] if result else 0
             await message.channel.send(f"{message.author.mention}, tu as envoyé {message_count} message(s) en {month_name} !")
 
+        # Afficher le top 10 des membres les plus actifs ce mois
         elif message.content == "!top":
             query = """
             SELECT user_id, message_count
@@ -168,6 +175,7 @@ async def on_message(message: discord.Message):
                     top_message += f"{index + 1}. {user_name}: {message_count} messages\n"
                 await message.channel.send(top_message)
 
+        # Afficher l'historique du mois précédent
         elif message.content == "!historique":
             query = """
             SELECT user_id, message_count
@@ -190,17 +198,22 @@ async def on_message(message: discord.Message):
                     top_message_prev += f"{index + 1}. {user_name}: {message_count} messages\n"
                 await message.channel.send(top_message_prev)
 
+        # Réinitialiser les statistiques (nécessite des modifications pour la base de données)
         elif message.content == "!reset" and message.author.guild_permissions.administrator:
+            # Déplacer les données actuelles vers l'historique
             insert_history_query = """
             INSERT INTO message_history (guild_id, user_id, message_count, month, year)
             SELECT guild_id, user_id, message_count, month, year
             FROM messages
             WHERE guild_id = %s AND month = %s AND year = %s
             """
-            cursor.execute(insert_history_query, (guild_id, current_month, current_year))
+            insert_history_values = (guild_id, current_month, current_year)
+            cursor.execute(insert_history_query, insert_history_values)
 
+            # Supprimer les données actuelles
             delete_query = "DELETE FROM messages WHERE guild_id = %s AND month = %s AND year = %s"
-            cursor.execute(delete_query, (guild_id, current_month, current_year))
+            delete_values = (guild_id, current_month, current_year)
+            cursor.execute(delete_query, delete_values)
 
             db.commit()
             await message.channel.send("Les statistiques du mois actuel ont été réinitialisées pour ce serveur !")
@@ -219,7 +232,8 @@ async def on_message(message: discord.Message):
                 help_message += "!reset : Réinitialise les statistiques du mois actuel\n"
             await message.channel.send(help_message)
 
-        elif message.content.startswith("!add_streamer"):
+        # Exemple de commande pour ajouter un streamer à suivre
+        if message.content.startswith("!add_streamer"):
             parts = message.content.split()
             if len(parts) == 3:
                 streamer_url = parts[1]
@@ -244,25 +258,61 @@ async def on_message(message: discord.Message):
             else:
                 await message.channel.send("Utilisation: !add_streamer <url_twitch> <nom_utilisateur_twitch>")
 
-        elif message.content == "!list_streamers":
+        # Exemple de commande pour lister les streamers suivis
+        if message.content == "!list_streamers":
             try:
                 db = connect_db()
                 cursor = db.cursor()
                 query = "SELECT username FROM streamers WHERE guild_id = %s"
                 cursor.execute(query, (guild_id,))
                 streamers = cursor.fetchall()
-                if not streamers:
-                    await message.channel.send("Aucun streamer n'est enregistré pour ce serveur.")
+                db.close()
+                if streamers:
+                    streamer_list = "\n".join([s[0] for s in streamers])
+                    await message.channel.send(f"Streamers suivis sur ce serveur:\n{streamer_list}")
                 else:
-                    streamer_list = "Streamers suivis :\n" + "\n".join([f"- {s[0]}" for s in streamers])
-                    await message.channel.send(streamer_list)
+                    await message.channel.send("Aucun streamer suivi sur ce serveur.")
+            except mysql.connector.Error as err:
+                await message.channel.send(f"Erreur lors de la récupération des streamers: {err}")
             finally:
                 if db.is_connected():
                     cursor.close()
                     db.close()
 
-    except Exception as e:
-        print(f"Erreur lors du traitement du message : {e}")
+        # Exemple de commande pour supprimer un streamer suivi
+        if message.content.startswith("!remove_streamer"):
+            parts = message.content.split()
+            if len(parts) == 2:
+                username_to_remove = parts[1]
+                try:
+                    db = connect_db()
+                    cursor = db.cursor()
+                    query = "DELETE FROM streamers WHERE guild_id = %s AND username = %s"
+                    values = (guild_id, username_to_remove)
+                    cursor.execute(query, values)
+                    db.commit()
+                    if cursor.rowcount > 0:
+                        await message.channel.send(f"Streamer {username_to_remove} supprimé des annonces.")
+                    else:
+                        await message.channel.send(f"Le streamer {username_to_remove} n'est pas suivi sur ce serveur.")
+                except mysql.connector.Error as err:
+                    await message.channel.send(f"Erreur lors de la suppression du streamer: {err}")
+                finally:
+                    if db.is_connected():
+                        cursor.close()
+                        db.close()
+            else:
+                await message.channel.send("Utilisation: !remove_streamer <nom_utilisateur_twitch>")
 
-# Démarrage du bot
-bot.run(os.getenv("DISCORD_TOKEN"))
+    except mysql.connector.Error as err:
+        print(f"Erreur de base de données: {err}")
+    except requests.exceptions.RequestException as twitch_err:
+        print(f"Erreur lors de la requête Twitch: {twitch_err}")
+    except Exception as e:
+        print(f"Erreur inattendue: {e}")
+    finally:
+        if db and db.is_connected():
+            cursor.close()
+            db.close()
+
+bot.run(os.getenv("DISCORD_ENV"))
