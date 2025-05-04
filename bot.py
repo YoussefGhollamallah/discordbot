@@ -48,6 +48,45 @@ def get_month_name(month_number):
     }
     return months.get(month_number, "Inconnu")
 
+async def monthly_score_backup():
+    await bot.wait_until_ready()
+    last_checked_month = datetime.now().month
+
+    while not bot.is_closed():
+        now = datetime.now()
+        current_month = now.month
+        current_year = now.year
+
+        if current_month != last_checked_month:
+            try:
+                db = connect_db()
+                cursor = db.cursor()
+
+                # Déplacement des scores vers message_history
+                insert_query = """
+                INSERT INTO message_history (guild_id, user_id, message_count, month, year)
+                SELECT guild_id, user_id, message_count, month, year FROM messages
+                """
+                cursor.execute(insert_query)
+
+                # Suppression des anciens scores
+                delete_query = "DELETE FROM messages"
+                cursor.execute(delete_query)
+
+                db.commit()
+                print(f"[Sauvegarde mensuelle] Données sauvegardées pour le mois {last_checked_month}.")
+
+                last_checked_month = current_month  # Mettre à jour le mois sauvegardé
+            except mysql.connector.Error as err:
+                print(f"Erreur lors de la sauvegarde mensuelle des scores : {err}")
+            finally:
+                if db.is_connected():
+                    cursor.close()
+                    db.close()
+
+        await asyncio.sleep(3600)  # Vérifie chaque heure
+
+
 # Fonction pour vérifier si un streamer Twitch est en live
 async def check_twitch_live(streamer_username):
     headers = {
@@ -116,6 +155,7 @@ async def twitch_live_checker():
 async def on_ready():
     print(f"Bot connecté en tant que {bot.user}")
     bot.loop.create_task(twitch_live_checker())
+    bot.loop.create_task(monthly_score_backup())
 
 @bot.event
 async def on_message(message: discord.Message):
