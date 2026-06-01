@@ -1,14 +1,4 @@
 
--- Table des streamers
-CREATE TABLE IF NOT EXISTS streamers (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    guild_id VARCHAR(255) NOT NULL,
-    channel_id VARCHAR(255) NOT NULL,
-    streamer_url VARCHAR(255) NOT NULL,
-    username VARCHAR(255) NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
 -- Table des messages
 CREATE TABLE IF NOT EXISTS messages (
     id INT AUTO_INCREMENT PRIMARY KEY,
